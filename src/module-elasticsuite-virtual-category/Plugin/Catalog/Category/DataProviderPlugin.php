@@ -106,6 +106,11 @@ class DataProviderPlugin
     {
         $storeId = $category->getStoreId();
 
+        $storesIds = $category->getStoreIds();
+        if (sizeof($storesIds) > 0 && in_array(0, $storesIds)){
+            $storeId = $storesIds[1];
+        }
+
         if ($storeId === 0) {
             $defaultStoreId = $this->storeManager->getDefaultStoreView()->getId();
             $storeId        = current(array_filter($category->getStoreIds()));

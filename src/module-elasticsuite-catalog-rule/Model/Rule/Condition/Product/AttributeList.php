@@ -93,6 +93,7 @@ class AttributeList
         StoreManagerInterface $storeManager,
         IndexOperationInterface $indexManager,
         MappingHelper $mappingHelper,
+        \Magento\AdminGws\Model\Role $role,
         $indexName = 'catalog_product',
         $typeName = 'product'
     ) {
@@ -102,6 +103,7 @@ class AttributeList
         $this->indexName                  = $indexName;
         $this->typeName                   = $typeName;
         $this->mappingHelper              = $mappingHelper;
+        $this->gwsRole                    = $role;
     }
 
     /**
@@ -173,6 +175,15 @@ class AttributeList
     {
         if ($this->mapping === null) {
             $defaultStore = $this->storeManager->getDefaultStoreView();
+
+            $storeIds = $this->gwsRole->getStoreIds();
+            if (isset($storeIds[0])) {
+                $storeId = $storeIds[0];
+                $defaultStore = $this->storeManager->getStore($storeId);
+            }else{
+                return $this->mapping;
+            }
+
             $index        = $this->indexManager->getIndexByName($this->indexName, $defaultStore);
 
             $this->mapping = $index->getType($this->typeName)->getMapping();
