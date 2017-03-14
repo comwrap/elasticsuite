@@ -89,6 +89,12 @@ class ClientFactory implements ClientFactoryInterface
         $clientConfiguration = $this->clientConfiguration;
 
         foreach ($clientConfiguration->getServerList() as $host) {
+
+            $keys = explode(':', $host);
+            if (sizeof($keys) != 2){
+                $host = "localhost:9200";
+            }
+
             list($hostname, $port) = explode(':', $host);
             $currentHostConfig = [
                 'host'   => $hostname,
