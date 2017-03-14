@@ -92,7 +92,7 @@ class InstallData implements InstallDataInterface
         $this->updateCategoryIsAnchorAttribute();
         $this->updateDefaultValuesForNameAttributes();
 
-        $this->getIndexer('elasticsuite_categories_fulltext')->reindexAll();
+        //$this->getIndexer('elasticsuite_categories_fulltext')->reindexAll();
 
         $setup->endSetup();
     }
