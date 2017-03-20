@@ -141,7 +141,12 @@ class AttributeList
                 return $field->isFilterable() || $field->isSearchable();
             };
 
-            $fieldNames = array_map($arrayNameCb, array_filter($this->getMapping()->getFields(), $attributeFilterCb));
+            if (!$this->getMapping()){
+                $fields = [];
+            }else{
+                $fields = $this->getMapping()->getFields();
+            }
+            $fieldNames = array_map($arrayNameCb, array_filter($fields, $attributeFilterCb));
 
             $this->attributeCollection->addFieldToFilter('attribute_code', $fieldNames)
                  ->addFieldToFilter('backend_type', ['neq' => 'datetime']);
