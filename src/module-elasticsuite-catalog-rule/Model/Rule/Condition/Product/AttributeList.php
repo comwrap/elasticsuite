@@ -186,6 +186,9 @@ class AttributeList
                 $storeId = $storeIds[0];
                 $defaultStore = $this->storeManager->getStore($storeId);
             }else{
+                $index        = $this->indexManager->getIndexByName($this->indexName, $defaultStore);
+                $this->mapping = $index->getType($this->typeName)->getMapping();
+
                 return $this->mapping;
             }
 
