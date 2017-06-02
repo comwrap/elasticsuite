@@ -206,8 +206,8 @@ class CategoryData extends Indexer
         $select->from(['cat' => $this->getEntityMetaData(CategoryInterface::class)->getEntityTable()], [$entityIdField])
             ->joinInner(['default_value' => $nameAttr->getBackendTable()], $joinCondition, [])
             ->where("cat.$entityIdField != ?", $rootCategoryId)
-            ->where('default_value.store_id = ?', 0)
-            ->where('default_value.attribute_id = ?', (int) $nameAttr->getAttributeId())
+//            ->where('default_value.store_id = ?', 0)
+//            ->where('default_value.attribute_id = ?', (int) $nameAttr->getAttributeId())
             ->where("cat.$entityIdField IN (?)", $loadCategoryIds);
 
         // Join to check for use_name_in_product_search.
