@@ -179,24 +179,42 @@ class AttributeList
     private function getMapping()
     {
         if ($this->mapping === null) {
-            $defaultStore = $this->storeManager->getDefaultStoreView();
 
-            $storeIds = $this->gwsRole->getStoreIds();
-            if (isset($storeIds[0])) {
-                $storeId = $storeIds[0];
-                $defaultStore = $this->storeManager->getStore($storeId);
-            }else{
-                $index        = $this->indexManager->getIndexByName($this->indexName, $defaultStore);
-                $this->mapping = $index->getType($this->typeName)->getMapping();
+            //            $defaultStore = $this->storeManager->getDefaultStoreView();
+//
+//            $storeIds = $this->gwsRole->getStoreIds();
+//            if (isset($storeIds[0])) {
+//                $storeId = $storeIds[0];
+//                $defaultStore = $this->storeManager->getStore($storeId);
+//            }else{
+//                $index        = $this->indexManager->getIndexByName($this->indexName, $defaultStore);
+//                $this->mapping = $index->getType($this->typeName)->getMapping();
+//
+//                return $this->mapping;
+//            }
 
-                return $this->mapping;
-            }
-
+            $defaultStore = $this->getDefaultStoreView();
             $index        = $this->indexManager->getIndexByName($this->indexName, $defaultStore);
 
             $this->mapping = $index->getType($this->typeName)->getMapping();
         }
 
         return $this->mapping;
+    }
+
+    /**
+     * Retrieve default Store View
+     *
+     * @return \Magento\Store\Api\Data\StoreInterface
+     */
+    private function getDefaultStoreView()
+    {
+        $store = $this->storeManager->getDefaultStoreView();
+        if (null === $store) {
+            // Occurs when current user does not have access to default website (due to AdminGWS ACLS on Magento EE).
+            $store = current($this->storeManager->getWebsites())->getDefaultStore();
+        }
+
+        return $store;
     }
 }

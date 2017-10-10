@@ -112,7 +112,7 @@ class DataProviderPlugin
         }
 
         if ($storeId === 0) {
-            $defaultStoreId = $this->storeManager->getDefaultStoreView()->getId();
+            $defaultStoreId = $this->getDefaultStoreView()->getId();
             $storeId        = current(array_filter($category->getStoreIds()));
             if (in_array($defaultStoreId, $category->getStoreIds())) {
                 $storeId = $defaultStoreId;
@@ -140,5 +140,21 @@ class DataProviderPlugin
         }
 
         return json_encode($productPositions, JSON_FORCE_OBJECT);
+    }
+
+    /**
+     * Retrieve default Store View
+     *
+     * @return \Magento\Store\Api\Data\StoreInterface
+     */
+    private function getDefaultStoreView()
+    {
+        $store = $this->storeManager->getDefaultStoreView();
+        if (null === $store) {
+            // Occurs when current user does not have access to default website (due to AdminGWS ACLS on Magento EE).
+            $store = current($this->storeManager->getWebsites())->getDefaultStore();
+        }
+
+        return $store;
     }
 }
