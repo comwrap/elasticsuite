@@ -14,6 +14,7 @@
  */
 namespace Smile\ElasticsuiteVirtualCategory\Model;
 
+use Magento\Store\Model\StoreManagerInterface;
 use Smile\ElasticsuiteCore\Search\Request\QueryInterface;
 use Magento\Catalog\Api\Data\CategoryInterface;
 use Smile\ElasticsuiteVirtualCategory\Api\Data\VirtualRuleInterface;
@@ -55,6 +56,11 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
     private $queryBuilder;
 
     /**
+     * @var \Magento\Store\Model\StoreManagerInterface
+     */
+    private $storeManager;
+
+    /**
      * Constructor.
      *
      * @SuppressWarnings(PHPMD.ExcessiveParameterList)
@@ -69,6 +75,7 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
      * @param \Magento\Catalog\Model\CategoryFactory                                                   $categoryFactory           Product category factorty.
      * @param \Smile\ElasticsuiteVirtualCategory\Model\ResourceModel\VirtualCategory\CollectionFactory $categoryCollectionFactory Virtual categories collection factory.
      * @param \Smile\ElasticsuiteCatalogRule\Model\Rule\Condition\Product\QueryBuilder                 $queryBuilder              Search rule query builder.
+     * @param StoreManagerInterface                                                                    $storeManagerInterface     Store Manager
      * @param array                                                                                    $data                      Additional data.
      */
     public function __construct(
@@ -82,6 +89,7 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
         \Magento\Catalog\Model\CategoryFactory $categoryFactory,
         \Smile\ElasticsuiteVirtualCategory\Model\ResourceModel\VirtualCategory\CollectionFactory $categoryCollectionFactory,
         \Smile\ElasticsuiteCatalogRule\Model\Rule\Condition\Product\QueryBuilder $queryBuilder,
+        StoreManagerInterface $storeManagerInterface,
         array $data = []
     ) {
         $this->queryFactory              = $queryFactory;
@@ -89,8 +97,21 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
         $this->categoryFactory           = $categoryFactory;
         $this->categoryCollectionFactory = $categoryCollectionFactory;
         $this->queryBuilder              = $queryBuilder;
+        $this->storeManager              = $storeManagerInterface;
 
         parent::__construct($context, $registry, $formFactory, $localeDate, $combineConditionsFactory, $data);
+    }
+
+    /**
+     * Implementation of __toString().
+     * This one is mandatory to ensure the object is properly handled when it get sent "as is" to a DB query.
+     * This occurs especially in @see \Magento\Catalog\Model\Indexer\Category\Flat\Action\Rows::reindex() (line 86 & 98)
+     *
+     * @return string
+     */
+    public function __toString()
+    {
+        return serialize($this->getConditions()->asArray());
     }
 
     /**
@@ -118,8 +139,9 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
             } elseif ($category->getId() && $category->getIsActive()) {
                 $query = $this->getStandardCategoryQuery($category, $excludedCategories);
             }
-
-            $query = $this->addChildrenQueries($query, $category, $excludedCategories);
+            if ($query && $category->hasChildren()) {
+                $query = $this->addChildrenQueries($query, $category, $excludedCategories);
+            }
         }
 
         return $query;
@@ -175,7 +197,9 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
             $rootCategory->load($rootCategoryId);
         }
 
-        if ($rootCategory && $rootCategory->getId() && $rootCategory->getLevel() < 1) {
+        if ($rootCategory && $rootCategory->getId()
+            && ($rootCategory->getLevel() < 1 || (int) $rootCategory->getId() === (int) $this->getRootCategoryId($storeId))
+        ) {
             $rootCategory = null;
         }
 
@@ -192,7 +216,20 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
      */
     private function getStandardCategoryQuery(CategoryInterface $category, $excludedCategories = [])
     {
-        $conditionsParams  = ['data' => ['attribute' => 'category_ids', 'operator' => '()', 'value' => $category->getId()]];
+        return $this->getStandardCategoriesQuery([$category->getId()], $excludedCategories);
+    }
+
+    /**
+     * Transform a category ids list in query rule.
+     *
+     * @param array $categoryIds        Categories included in the query.
+     * @param array $excludedCategories Categories ignored in subquery filters.
+     *
+     * @return QueryInterface
+     */
+    private function getStandardCategoriesQuery(array $categoryIds, $excludedCategories)
+    {
+        $conditionsParams  = ['data' => ['attribute' => 'category_ids', 'operator' => '()', 'value' => $categoryIds]];
         $categoryCondition = $this->productConditionsFactory->create($conditionsParams);
 
         return $this->queryBuilder->getSearchQuery($categoryCondition, $excludedCategories);
@@ -226,6 +263,8 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
     /**
      * Append children queries to the rule.
      *
+     * @SuppressWarnings(PHPMD.ElseExpression)
+     *
      * @param QueryInterface|NULL $query              Base query.
      * @param CategoryInterface   $category           Current cayegory.
      * @param array               $excludedCategories Category already used into the building stack. Avoid short circuit.
@@ -234,15 +273,25 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
      */
     private function addChildrenQueries($query, CategoryInterface $category, $excludedCategories = [])
     {
-        $childrenCategories = $this->getChildrenCategories($category, $excludedCategories);
+        $childrenCategories    = $this->getChildrenCategories($category, $excludedCategories);
+        $childrenCategoriesIds = [];
 
         if ($childrenCategories->getSize() > 0 && $query !== null) {
             $queryParams = ['should' => [$query], 'cached' => empty($excludedCategories)];
+
             foreach ($childrenCategories as $childrenCategory) {
-                $childrenQuery = $this->getCategorySearchQuery($childrenCategory, $excludedCategories);
-                if ($childrenQuery !== null) {
-                    $queryParams['should'][] = $childrenQuery;
+                if (((bool) $childrenCategory->getIsVirtualCategory()) === true) {
+                    $childrenQuery = $this->getCategorySearchQuery($childrenCategory, $excludedCategories);
+                    if ($childrenQuery !== null) {
+                        $queryParams['should'][] = $childrenQuery;
+                    }
+                } else {
+                    $childrenCategoriesIds[] = $childrenCategory->getId();
                 }
+            }
+
+            if (!empty($childrenCategoriesIds)) {
+                $queryParams['should'][] = $this->getStandardCategoriesQuery($childrenCategoriesIds, $excludedCategories);
             }
 
             if (count($queryParams['should']) > 1) {
@@ -268,6 +317,10 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
 
         $categoryCollection->addIsActiveFilter()->addPathFilter(sprintf('%s/.*', $category->getPath()));
 
+        if (((bool) $category->getIsVirtualCategory()) === false) {
+            $categoryCollection->addFieldToFilter('is_virtual_category', '1');
+        }
+
         if (!empty($excludedCategories)) {
             $categoryCollection->addAttributeToFilter('entity_id', ['nin' => $excludedCategories]);
         }
@@ -275,5 +328,23 @@ class Rule extends \Smile\ElasticsuiteCatalogRule\Model\Rule implements VirtualR
         $categoryCollection->addAttributeToSelect(['is_active', 'virtual_category_root', 'is_virtual_category', 'virtual_rule']);
 
         return $categoryCollection;
+    }
+
+    /**
+     * Retrieve store root category id.
+     *
+     * @param \Magento\Store\Api\Data\StoreInterface|int|string $store Store id.
+     *
+     * @return integer
+     */
+    private function getRootCategoryId($store)
+    {
+        if (is_numeric($store) || is_string($store)) {
+            $store = $this->storeManager->getStore($store);
+        }
+
+        $storeGroupId = $store->getStoreGroupId();
+
+        return $this->storeManager->getGroup($storeGroupId)->getRootCategoryId();
     }
 }
