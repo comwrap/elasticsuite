@@ -188,8 +188,12 @@ class Builder
             'cutoffFrequency' => $containerConfig->getRelevanceConfig()->getCutOffFrequency(),
         ];
 
-        $spellcheckRequest = $this->spellcheckRequestFactory->create($spellcheckRequestParams);
-        $spellingType = $this->spellchecker->getSpellingType($spellcheckRequest);
+        if($spellcheckRequestParams['type'] == 'page') {
+            return SpellcheckerInterface::SPELLING_TYPE_EXACT;
+        } else {
+            $spellcheckRequest = $this->spellcheckRequestFactory->create($spellcheckRequestParams);
+            $spellingType = $this->spellchecker->getSpellingType($spellcheckRequest);
+        }
 
         return $spellingType;
     }
